@@ -28,14 +28,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
 private val LightColor = lightColorScheme(
-    primary = Color(0xFF000000), // Black
+    primary = Color(0xFF97751C), // Light Gold Accent
     onPrimary = Color(0xFFFFFFFF), // White
-    primaryContainer = Color(0xFFE0E0E0), // Light Gray
-    onPrimaryContainer = Color(0xFF000000), // Black
-    secondary = Color(0xFFf97910), // Orange
+    primaryContainer = Color(0xFFF3E8C8), // Light Gold Container
+    onPrimaryContainer = Color(0xFF2E2200), // Dark Gold
+    secondary = Color(0xFF97751C), // Light Gold Accent
     onSecondary = Color(0xFFFFFFFF), // White
-    secondaryContainer = Color(0xFFFFE8D6), // Pale Orange
-    onSecondaryContainer = Color(0xFF2B1700), // Dark Brown
+    secondaryContainer = Color(0xFFF3E8C8), // Pale Gold
+    onSecondaryContainer = Color(0xFF2E2200), // Dark Gold
     tertiary = Color(0xFF009966), // Green
     onTertiary = Color(0xFFFFFFFF), // White
     tertiaryContainer = Color(0xFFA0F2D0), // Light Green
@@ -54,9 +54,9 @@ private val LightColor = lightColorScheme(
     outlineVariant = Color(0xFFCAC4D0), // Light Gray
     inverseSurface = Color(0xFF313033), // Dark Gray
     inverseOnSurface = Color(0xFFF4EFF4), // Very Light Gray
-    inversePrimary = Color(0xFFC0C0C0), // Silver Gray
+    inversePrimary = Color(0xFFD8B45A), // Champagne Gold
     scrim = Color(0xFF000000), // Black
-    surfaceTint = Color(0xFF000000), // Black
+    surfaceTint = Color(0xFF97751C), // Light Gold
     surfaceContainerLowest = Color(0xFFFFFFFF), // White
     surfaceContainerLow = Color(0xFFF7F7F7), // Very Light Gray
     surfaceContainer = Color(0xFFF1F1F1), // Light Gray
@@ -65,51 +65,51 @@ private val LightColor = lightColorScheme(
 )
 
 private val DarkColor = darkColorScheme(
-    primary = Color(0xFFC0C0C0), // Silver Gray
-    onPrimary = Color(0xFF303030), // Dark Gray
-    primaryContainer = Color(0xFF474747), // Gray
-    onPrimaryContainer = Color(0xFFE0E0E0), // Light Gray
-    secondary = Color(0xFFf97910), // Orange
-    onSecondary = Color(0xFF4E2600), // Dark Brown
-    secondaryContainer = Color(0xFF6F3800), // Brown
-    onSecondaryContainer = Color(0xFFFFE8D6), // Pale Orange
-    tertiary = Color(0xFF83D6B5), // Mint Green
-    onTertiary = Color(0xFF00382E), // Dark Teal
-    tertiaryContainer = Color(0xFF005143), // Teal
-    onTertiaryContainer = Color(0xFFA0F2D0), // Light Green
+    primary = Color(0xFFD8B45A), // Champagne Gold Accent (#D8B45A)
+    onPrimary = Color(0xFF060607), // Near Black (#060607)
+    primaryContainer = Color(0xFF2E2614), // Dark Gold Surface
+    onPrimaryContainer = Color(0xFFD8B45A), // Champagne Gold
+    secondary = Color(0xFFD8B45A), // Champagne Gold Accent
+    onSecondary = Color(0xFF060607), // Near Black
+    secondaryContainer = Color(0xFF252118), // Dark Gold
+    onSecondaryContainer = Color(0xFFD8B45A), // Champagne Gold
+    tertiary = Color(0xFFD8B45A), // Champagne Gold
+    onTertiary = Color(0xFF060607), // Near Black
+    tertiaryContainer = Color(0xFF252118),
+    onTertiaryContainer = Color(0xFFD8B45A),
     error = Color(0xFFFFB4AB), // Light Red
     errorContainer = Color(0xFF93000A), // Dark Red
     onError = Color(0xFF690005), // Deep Red
     onErrorContainer = Color(0xFFFFDAD6), // Light Red
-    background = Color(0xFF1C1B1F), // Near Black
-    onBackground = Color(0xFFE6E1E5), // Light Gray
-    surface = Color(0xFF1C1B1F), // Near Black
-    onSurface = Color(0xFFE6E1E5), // Light Gray
-    surfaceVariant = Color(0xFF49454F), // Dark Gray
-    onSurfaceVariant = Color(0xFFCAC4D0), // Light Gray
-    outline = Color(0xFF938F99), // Grayish Purple
-    outlineVariant = Color(0xFF49454F), // Dark Gray
-    inverseSurface = Color(0xFFE6E1E5), // Light Gray
-    inverseOnSurface = Color(0xFF1C1B1F), // Near Black
-    inversePrimary = Color(0xFF000000), // Black
-    scrim = Color(0xFF000000), // Black
-    surfaceTint = Color(0xFFC0C0C0), // Silver Gray
-    surfaceContainerLowest = Color(0xFF0F0F12), // Near Black
-    surfaceContainerLow = Color(0xFF1A191D), // Dark Gray
-    surfaceContainer = Color(0xFF1E1D21), // Dark Gray
-    surfaceContainerHigh = Color(0xFF282729), // Dark Gray
-    surfaceContainerHighest = Color(0xFF333234), // Dark Gray
+    background = Color(0xFF060607), // Near-black background (#060607)
+    onBackground = Color(0xFFEDEDED), // Flat monochrome light text
+    surface = Color(0xFF101013), // Cards/surfaces (#101013)
+    onSurface = Color(0xFFEDEDED), // Flat monochrome light text
+    surfaceVariant = Color(0xFF16161A), // Flat dark surface
+    onSurfaceVariant = Color(0xFFCAC4D0), // Medium light gray
+    outline = Color(0xFF2E2E35), // Flat dark outline
+    outlineVariant = Color(0xFF1E1E24), // Flat dark border
+    inverseSurface = Color(0xFFEDEDED),
+    inverseOnSurface = Color(0xFF060607),
+    inversePrimary = Color(0xFF97751C),
+    scrim = Color(0xFF000000),
+    surfaceTint = Color(0xFFD8B45A),
+    surfaceContainerLowest = Color(0xFF060607), // Near Black (#060607)
+    surfaceContainerLow = Color(0xFF0B0B0E),
+    surfaceContainer = Color(0xFF101013), // Cards/surfaces (#101013)
+    surfaceContainerHigh = Color(0xFF17171C),
+    surfaceContainerHighest = Color(0xFF1E1E24),
 )
 
 // Semantic Colors
 val colorPing = Color(0xFF009966) // Green
 val colorPingRed = Color(0xFFFF0099) // Pink Red
-val colorConfigType = Color(0xFFf97910) // Orange
-val colorFabActive = Color(0xFFf97910) // Orange
+val colorConfigType = Color(0xFFD8B45A) // Champagne Gold
+val colorFabActive = Color(0xFFD8B45A) // Champagne Gold
 val colorFabInactiveLight = Color(0xFF9C9C9C) // Gray
-val colorFabInactiveDark = Color(0xFF646464) // Dark Gray
+val colorFabInactiveDark = Color(0xFF444444) // Flat Dark Gray
 val dividerColorLight = Color(0xFFE0E0E0) // Light Gray
-val dividerColorDark = Color(0xFF424242) // Dark Gray
+val dividerColorDark = Color(0xFF1E1E24) // Flat Dark Border
 
 // Toast Colors 85%
 val toastNormalBgLight = Color(0xD9353A3E) // Dark Gray
@@ -127,7 +127,7 @@ object ThemeManager {
     val themeMode: StateFlow<String> = _themeMode.asStateFlow()
 
     private val _dynamicColorEnabled = MutableStateFlow(
-        MmkvManager.decodeSettingsBool(AppConfig.PREF_DYNAMIC_COLOR, true)
+        MmkvManager.decodeSettingsBool(AppConfig.PREF_DYNAMIC_COLOR, false)
     )
     val dynamicColorEnabled: StateFlow<Boolean> = _dynamicColorEnabled.asStateFlow()
 

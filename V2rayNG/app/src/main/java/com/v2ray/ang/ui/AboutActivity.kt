@@ -104,6 +104,11 @@ fun AboutScreen(
             )
             SettingsMenuItem(
                 icon = painterResource(R.drawable.ic_telegram_24dp),
+                title = stringResource(R.string.title_support),
+                onClick = { Utils.openUri(context, AppConfig.SUPPORT_URL) }
+            )
+            SettingsMenuItem(
+                icon = painterResource(R.drawable.ic_telegram_24dp),
                 title = stringResource(R.string.title_tg_channel),
                 onClick = { Utils.openUri(context, AppConfig.TG_CHANNEL_URL) }
             )

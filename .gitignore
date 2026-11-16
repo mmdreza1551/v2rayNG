@@ -4,6 +4,7 @@
 *.keystore
 keystore/
 keystore.properties
+telegram.local.env
 
 # Ignore output JSON file
 V2rayNG/app/release/output.json

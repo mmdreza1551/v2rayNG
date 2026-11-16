@@ -26,7 +26,8 @@ data class MainUiState(
     val locateTarget: LocateTarget? = null,
     val confirmRemove: Boolean = false,
     val doubleColumnDisplay: Boolean = false,
-    val shareQRCodeBitmap: android.graphics.Bitmap? = null
+    val shareQRCodeBitmap: android.graphics.Bitmap? = null,
+    val bannerMessage: String? = null
 )
 
 /**
@@ -35,6 +36,7 @@ data class MainUiState(
 sealed interface MainAction {
     data object Initialize : MainAction
     data object RefreshGroups : MainAction
+    data object DismissBanner : MainAction
     data object ToggleService : MainAction
     data object TestCurrentServer : MainAction
     data object TestAllServers : MainAction

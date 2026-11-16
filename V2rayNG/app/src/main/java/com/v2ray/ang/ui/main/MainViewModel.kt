@@ -131,20 +131,19 @@ class MainViewModel(
             MainServiceEvent.StateRunning -> updateRunningState(true, clearTestingText = false)
             MainServiceEvent.StateNotRunning -> updateRunningState(false, clearTestingText = false)
             MainServiceEvent.StateStartSuccess -> {
-                toastSuccess(R.string.toast_services_success)
+                _uiState.update { it.copy(bannerMessage = "متصل شد") }
                 updateRunningState(true)
             }
 
             is MainServiceEvent.StateStartFailure -> {
-                if (!event.message.isNullOrBlank()) {
-                    toastError(event.message)
-                } else {
-                    toastError(R.string.toast_services_failure)
-                }
+                _uiState.update { it.copy(bannerMessage = "خطا در اتصال") }
                 updateRunningState(false)
             }
 
-            MainServiceEvent.StateStopSuccess -> updateRunningState(false)
+            MainServiceEvent.StateStopSuccess -> {
+                _uiState.update { it.copy(bannerMessage = "اتصال قطع شد") }
+                updateRunningState(false)
+            }
             is MainServiceEvent.MeasureDelayResult -> {
                 if (!uiState.value.isRunning || !testRequests.completeCurrent(event.requestId)) return
                 _uiState.update { it.copy(isTesting = testRequests.isTesting, status = MainStatus.ConnectionTest(event.result)) }
@@ -300,6 +299,10 @@ class MainViewModel(
 
             MainAction.DismissQRCodeDialog -> {
                 _uiState.update { it.copy(shareQRCodeBitmap = null) }
+            }
+
+            MainAction.DismissBanner -> {
+                _uiState.update { it.copy(bannerMessage = null) }
             }
 
             MainAction.ToggleService,

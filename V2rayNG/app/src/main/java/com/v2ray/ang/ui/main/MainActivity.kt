@@ -8,16 +8,33 @@ import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.ScaffoldDefaults
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.lifecycleScope
 import com.v2ray.ang.AngApplication
 import com.v2ray.ang.AppConfig
@@ -37,9 +54,12 @@ import com.v2ray.ang.handler.SubscriptionInfoParser
 import com.v2ray.ang.ui.AboutActivity
 import com.v2ray.ang.ui.backup.BackupActivity
 import com.v2ray.ang.ui.base.HelperBaseComponentActivity
+import com.v2ray.ang.ui.compose.DeleteConfirmDialog
+import com.v2ray.ang.ui.compose.QRCodeDialog
 import com.v2ray.ang.ui.home.MainTab
 import com.v2ray.ang.ui.home.MrVpnBottomBar
 import com.v2ray.ang.ui.home.MrVpnHomeScreen
+import com.v2ray.ang.ui.home.MrVpnServersScreen
 import com.v2ray.ang.ui.home.MrVpnUsageScreen
 import com.v2ray.ang.ui.checkupdate.CheckUpdateActivity
 import com.v2ray.ang.ui.logcat.LogcatActivity
@@ -114,6 +134,13 @@ class MainActivity : HelperBaseComponentActivity() {
     @Composable
     override fun ScreenContent() {
         var currentTab by rememberSaveable { mutableStateOf(MainTab.Home) }
+        val uiState by mainViewModel.uiState.collectAsStateWithLifecycle()
+
+        var showRemoveConfirm by rememberSaveable(stateSaver = ServerDeleteTarget.Saver) {
+            mutableStateOf<ServerDeleteTarget?>(null)
+        }
+        var shareTarget by remember { mutableStateOf<Triple<String, ProfileItem, Boolean>?>(null) }
+        var showImportDialog by remember { mutableStateOf(false) }
 
         BackHandler {
             if (currentTab != MainTab.Home) {
@@ -151,60 +178,221 @@ class MainActivity : HelperBaseComponentActivity() {
             }
         }
 
-        when (currentTab) {
-            MainTab.Home -> {
-                Scaffold(
-                    contentWindowInsets = ScaffoldDefaults.contentWindowInsets,
-                    bottomBar = {
-                        MrVpnBottomBar(
-                            currentTab = currentTab,
-                            onTabSelected = onTabSelected
+        val removeServer: (String, String) -> Unit = { guid, profileName ->
+            showRemoveConfirm = ServerDeleteTarget(guid, profileName)
+        }
+
+        Box(modifier = Modifier.fillMaxSize()) {
+            when (currentTab) {
+                MainTab.Home -> {
+                    Scaffold(
+                        contentWindowInsets = ScaffoldDefaults.contentWindowInsets,
+                        bottomBar = {
+                            MrVpnBottomBar(
+                                currentTab = currentTab,
+                                onTabSelected = onTabSelected
+                            )
+                        }
+                    ) { innerPadding ->
+                        MrVpnHomeScreen(
+                            mainViewModel = mainViewModel,
+                            onAction = onActionHandler,
+                            onNavigate = { route -> navigateTo(route) },
+                            onOpenServers = { currentTab = MainTab.Servers },
+                            onOpenSettings = { navigateTo(MainDestination.Settings) },
+                            modifier = Modifier.padding(innerPadding)
                         )
                     }
-                ) { innerPadding ->
-                    MrVpnHomeScreen(
-                        mainViewModel = mainViewModel,
-                        onAction = onActionHandler,
-                        onNavigate = { route -> navigateTo(route) },
-                        onOpenServers = { currentTab = MainTab.Servers },
-                        onOpenSettings = { navigateTo(MainDestination.Settings) },
-                        modifier = Modifier.padding(innerPadding)
-                    )
+                }
+                MainTab.Servers -> {
+                    Scaffold(
+                        contentWindowInsets = ScaffoldDefaults.contentWindowInsets,
+                        bottomBar = {
+                            MrVpnBottomBar(
+                                currentTab = currentTab,
+                                onTabSelected = onTabSelected
+                            )
+                        }
+                    ) { innerPadding ->
+                        MrVpnServersScreen(
+                            mainViewModel = mainViewModel,
+                            onAction = onActionHandler,
+                            onSelectServer = { guid ->
+                                setSelectServer(guid)
+                                if (mainViewModel.uiState.value.isRunning) {
+                                    LauncherManager.restartServiceOrStart(this@MainActivity, ::requestServiceStart)
+                                }
+                                lifecycleScope.launch {
+                                    kotlinx.coroutines.delay(300)
+                                    currentTab = MainTab.Home
+                                }
+                            },
+                            onShareServer = { guid, profile ->
+                                shareTarget = Triple(guid, profile, false)
+                            },
+                            onEditServer = { guid, profile ->
+                                editServer(guid, profile)
+                            },
+                            onRemoveServer = removeServer,
+                            onOpenImport = {
+                                showImportDialog = true
+                            },
+                            modifier = Modifier.padding(innerPadding)
+                        )
+                    }
+                }
+                MainTab.Usage -> {
+                    Scaffold(
+                        contentWindowInsets = ScaffoldDefaults.contentWindowInsets,
+                        bottomBar = {
+                            MrVpnBottomBar(
+                                currentTab = currentTab,
+                                onTabSelected = onTabSelected
+                            )
+                        }
+                    ) { innerPadding ->
+                        MrVpnUsageScreen(
+                            mainViewModel = mainViewModel,
+                            modifier = Modifier.padding(innerPadding)
+                        )
+                    }
+                }
+                MainTab.Settings -> {
+                    LaunchedEffect(Unit) {
+                        navigateTo(MainDestination.Settings)
+                        currentTab = MainTab.Home
+                    }
                 }
             }
-            MainTab.Servers -> {
-                MainScreen(
-                    mainViewModel = mainViewModel,
-                    onAction = onActionHandler,
-                    onNavigate = { route -> navigateTo(route) },
-                    bottomBar = {
-                        MrVpnBottomBar(
-                            currentTab = currentTab,
-                            onTabSelected = onTabSelected
-                        )
+
+            // F1: Floating branded notification banner («متصل شد» / «اتصال قطع شد» / «خطا در اتصال»)
+            MrVpnFloatingBanner(
+                message = uiState.bannerMessage,
+                onDismiss = { mainViewModel.onAction(MainAction.DismissBanner) }
+            )
+        }
+
+        // Dialogs for servers
+        if (showRemoveConfirm != null) {
+            DeleteConfirmDialog(
+                message = "آیا از حذف «${showRemoveConfirm?.profileName}» اطمینان دارید؟",
+                onConfirm = {
+                    val guid = showRemoveConfirm!!.guid
+                    showRemoveConfirm = null
+                    onActionHandler(MainAction.RemoveServer(guid))
+                },
+                onDismiss = { showRemoveConfirm = null }
+            )
+        }
+
+        if (shareTarget != null) {
+            val (guid, profile, more) = shareTarget!!
+            ShareMethodDialog(
+                guid = guid,
+                profile = profile,
+                more = more,
+                onDismiss = { shareTarget = null },
+                onAction = onActionHandler,
+                onRemove = removeServer,
+            )
+        }
+
+        if (uiState.shareQRCodeBitmap != null) {
+            QRCodeDialog(
+                bitmap = uiState.shareQRCodeBitmap!!,
+                onDismiss = { onActionHandler(MainAction.DismissQRCodeDialog) }
+            )
+        }
+
+        if (showImportDialog) {
+            AlertDialog(
+                onDismissRequest = { showImportDialog = false },
+                title = { Text("افزودن کانفیگ", fontWeight = FontWeight.Bold) },
+                text = {
+                    androidx.compose.foundation.layout.Column(
+                        verticalArrangement = androidx.compose.foundation.layout.Arrangement.spacedBy(8.dp)
+                    ) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    showImportDialog = false
+                                    importClipboard()
+                                },
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFF18181D)
+                        ) {
+                            Text("جای‌گذاری از کلیپ‌بورد", modifier = Modifier.padding(14.dp), color = Color(0xFFD8B45A))
+                        }
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    showImportDialog = false
+                                    importQRcode()
+                                },
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFF18181D)
+                        ) {
+                            Text("اسکن بارکد (QR Code)", modifier = Modifier.padding(14.dp), color = Color(0xFFD8B45A))
+                        }
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    showImportDialog = false
+                                    importConfigLocal()
+                                },
+                            shape = RoundedCornerShape(10.dp),
+                            color = Color(0xFF18181D)
+                        ) {
+                            Text("ورود از فایل محلی", modifier = Modifier.padding(14.dp), color = Color(0xFFF3F3F4))
+                        }
                     }
+                },
+                confirmButton = {},
+                dismissButton = {
+                    TextButton(onClick = { showImportDialog = false }) {
+                        Text("انصراف", color = Color(0xFF8B8B93))
+                    }
+                },
+                containerColor = Color(0xFF101013),
+                titleContentColor = Color(0xFFF3F3F4),
+                shape = RoundedCornerShape(16.dp)
+            )
+        }
+    }
+
+    @Composable
+    private fun MrVpnFloatingBanner(
+        message: String?,
+        onDismiss: () -> Unit,
+        modifier: Modifier = Modifier
+    ) {
+        if (message.isNullOrEmpty()) return
+        LaunchedEffect(message) {
+            kotlinx.coroutines.delay(2000L)
+            onDismiss()
+        }
+        Box(
+            modifier = modifier
+                .fillMaxWidth()
+                .padding(top = 44.dp, start = 20.dp, end = 20.dp),
+            contentAlignment = Alignment.TopCenter
+        ) {
+            Surface(
+                shape = RoundedCornerShape(14.dp),
+                color = Color(0xFF101013),
+                border = BorderStroke(1.dp, Color(0xFFD8B45A)),
+                shadowElevation = 8.dp
+            ) {
+                Text(
+                    text = message,
+                    fontSize = 14.5.sp,
+                    fontWeight = FontWeight.Medium,
+                    color = Color(0xFFF3F3F4),
+                    modifier = Modifier.padding(horizontal = 24.dp, vertical = 10.dp)
                 )
-            }
-            MainTab.Usage -> {
-                Scaffold(
-                    contentWindowInsets = ScaffoldDefaults.contentWindowInsets,
-                    bottomBar = {
-                        MrVpnBottomBar(
-                            currentTab = currentTab,
-                            onTabSelected = onTabSelected
-                        )
-                    }
-                ) { innerPadding ->
-                    MrVpnUsageScreen(
-                        modifier = Modifier.padding(innerPadding)
-                    )
-                }
-            }
-            MainTab.Settings -> {
-                LaunchedEffect(Unit) {
-                    navigateTo(MainDestination.Settings)
-                    currentTab = MainTab.Home
-                }
             }
         }
     }

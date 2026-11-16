@@ -1,9 +1,26 @@
 package com.v2ray.ang.ui.home
 
 import android.os.SystemClock
+import android.provider.Settings
 import androidx.annotation.DrawableRes
 import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.LinearOutSlowInEasing
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -32,7 +49,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -47,8 +63,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.StrokeCap
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.res.painterResource
@@ -60,25 +78,22 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.v2ray.ang.R
-import com.v2ray.ang.dto.entities.ServersCache
+import com.v2ray.ang.dto.RealPingEvent
+import com.v2ray.ang.dto.entities.ServerAffiliationInfo
 import com.v2ray.ang.dto.entities.SubscriptionUsageInfo
 import com.v2ray.ang.extension.toast
-import com.v2ray.ang.handler.SpeedtestManager
+import com.v2ray.ang.handler.MmkvManager
+import com.v2ray.ang.service.RealPingWorkerService
 import com.v2ray.ang.ui.compose.LocalDarkTheme
 import com.v2ray.ang.ui.main.MainAction
 import com.v2ray.ang.ui.main.MainDestination
 import com.v2ray.ang.ui.main.MainViewModel
-import com.v2ray.ang.util.Utils
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.async
-import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 import java.util.Locale
 
-// --- Persian Utilities ---
+// --- Persian Digits Formatter Helper ---
 fun toPersianDigits(text: String): String {
     val persianDigits = charArrayOf('۰', '۱', '۲', '۳', '۴', '۵', '۶', '۷', '۸', '۹')
     val sb = StringBuilder(text.length)
@@ -92,32 +107,12 @@ fun toPersianDigits(text: String): String {
     return sb.toString()
 }
 
-object FlagHelper {
-    private val FLAG_REGEX = Regex("[\\uD83C][\\uDDE6-\\uDDFF][\\uD83C][\\uDDE6-\\uDDFF]")
-
-    fun getFlag(remarks: String?): String {
-        if (remarks.isNullOrBlank()) return "🌐"
-        val match = FLAG_REGEX.find(remarks)
-        if (match != null) return match.value
-
-        val lower = remarks.lowercase(Locale.ROOT)
-        return when {
-            lower.contains("ترکیه") || lower.contains("turkey") || lower.contains("istanbul") || lower.contains("turk") -> "🇹🇷"
-            lower.contains("آلمان") || lower.contains("المان") || lower.contains("germany") || lower.contains("deutschland") || lower.contains("frankfurt") || lower.contains("berlin") -> "🇩🇪"
-            lower.contains("بلغارستان") || lower.contains("bulgaria") || lower.contains("sofia") -> "🇧🇬"
-            lower.contains("هلند") || lower.contains("netherlands") || lower.contains("amsterdam") || lower.contains("dutch") -> "🇳🇱"
-            lower.contains("اوکراین") || lower.contains("ukraine") || lower.contains("kyiv") -> "🇺🇦"
-            lower.contains("آمریکا") || lower.contains("امریکا") || lower.contains("usa") || lower.contains("america") || lower.contains("united states") -> "🇺🇸"
-            lower.contains("فنلاند") || lower.contains("finland") || lower.contains("helsinki") -> "🇫🇮"
-            lower.contains("آذربایجان") || lower.contains("اذربایجان") || lower.contains("azerbaijan") || lower.contains("baku") -> "🇦🇿"
-            lower.contains("فرانسه") || lower.contains("france") || lower.contains("paris") -> "🇫🇷"
-            lower.contains("آلبانی") || lower.contains("البانی") || lower.contains("albania") || lower.contains("tirana") -> "🇦🇱"
-            lower.contains("انگلیس") || lower.contains("بریتانیا") || lower.contains("uk") || lower.contains("england") || lower.contains("london") || lower.contains("britain") -> "🇬🇧"
-            lower.contains("کانادا") || lower.contains("canada") || lower.contains("toronto") -> "🇨🇦"
-            lower.contains("ایتالیا") || lower.contains("italy") || lower.contains("milan") || lower.contains("rome") -> "🇮🇹"
-            else -> "🌐"
-        }
-    }
+fun isLoopbackServer(server: String?): Boolean {
+    if (server.isNullOrBlank()) return false
+    val trimmed = server.trim().lowercase()
+    if (trimmed == "localhost" || trimmed == "::1") return true
+    if (trimmed.startsWith("127.")) return true
+    return false
 }
 
 enum class MainTab(@DrawableRes val iconRes: Int, @StringRes val labelRes: Int) {
@@ -140,24 +135,49 @@ fun MrVpnHomeScreen(
     val isDarkTheme = LocalDarkTheme.current
     val uiState by mainViewModel.uiState.collectAsStateWithLifecycle()
     val isConnected = uiState.isRunning
+    val isTesting = uiState.isTesting
     val scope = rememberCoroutineScope()
 
-    // Active servers in current group
+    // Respect system animation duration scale
+    val areAnimationsEnabled = remember {
+        try {
+            Settings.Global.getFloat(context.contentResolver, Settings.Global.ANIMATOR_DURATION_SCALE, 1f) > 0f
+        } catch (_: Exception) {
+            true
+        }
+    }
+
+    // Active servers in current group, filtering out fake info-lines (F6)
     val currentServersFlow = remember(uiState.selectedGroupId) {
         mainViewModel.serversForGroup(uiState.selectedGroupId)
     }
-    val servers by currentServersFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+    val rawServers by currentServersFlow.collectAsStateWithLifecycle(initialValue = emptyList())
+    val servers = remember(rawServers) {
+        rawServers.filterNot { isLoopbackServer(it.profile.server) }
+    }
 
     // Currently selected server
     val selectedServer = remember(servers, uiState.selectedGuid) {
         servers.find { it.guid == uiState.selectedGuid } ?: servers.firstOrNull()
     }
 
-    // Active subscription usage info
-    val activeGroup = remember(uiState.groups, uiState.selectedGroupId) {
-        uiState.groups.find { it.id == uiState.selectedGroupId } ?: uiState.groups.firstOrNull()
+    // F4: Stats must read the subscription that OWNS the currently selected config!
+    val activeSubId = selectedServer?.profile?.subscriptionId
+    val activeGroup = remember(uiState.groups, activeSubId, uiState.selectedGroupId) {
+        if (!activeSubId.isNullOrEmpty()) {
+            uiState.groups.find { it.id == activeSubId }
+        } else {
+            uiState.groups.find { it.id == uiState.selectedGroupId } ?: uiState.groups.firstOrNull()
+        }
     }
     val usageInfo: SubscriptionUsageInfo? = activeGroup?.usageInfo
+
+    // F10: Resolve exit country when connected
+    LaunchedEffect(isConnected, selectedServer?.guid) {
+        if (isConnected && selectedServer != null && selectedServer.guid.isNotBlank()) {
+            CountryFlagHelper.resolveAndCacheExitCountry(selectedServer.guid)
+        }
+    }
 
     // Live duration timer
     var elapsedSeconds by remember { mutableLongStateOf(0L) }
@@ -184,46 +204,66 @@ fun MrVpnHomeScreen(
     val seconds = elapsedSeconds % 60L
     val timerString = toPersianDigits(String.format(Locale.US, "%02d:%02d:%02d", hours, minutes, seconds))
 
+    // Connecting state tracking
+    var isConnectingLocal by remember { mutableStateOf(false) }
+    LaunchedEffect(isConnected) {
+        if (isConnected) isConnectingLocal = false
+    }
+
     // Smart connect state
     var isSmartConnecting by remember { mutableStateOf(false) }
 
     val onSmartConnectClick: () -> Unit = {
-        if (servers.isEmpty()) {
+        val validConfigs = servers.filterNot { isLoopbackServer(it.profile.server) }
+        if (validConfigs.isEmpty()) {
             context.toast(context.getString(R.string.no_server_available))
         } else {
             isSmartConnecting = true
             scope.launch {
-                val results = withContext(Dispatchers.IO) {
-                    servers.map { server ->
-                        async {
-                            val host = server.profile.server ?: ""
-                            val port = server.profile.serverPort?.toIntOrNull() ?: 443
-                            val time = if (host.isNotEmpty()) {
-                                SpeedtestManager.socketConnectTime(host, port, 2000)
-                            } else -1L
-                            Pair(server, time)
+                val results = mutableMapOf<String, Long>()
+                val worker = RealPingWorkerService(
+                    context = context,
+                    guids = validConfigs.map { it.guid },
+                    onlyTcp = false
+                ) { event ->
+                    when (event) {
+                        is RealPingEvent.Result -> {
+                            if (event.delayMillis > 0L) {
+                                synchronized(results) {
+                                    results[event.guid] = event.delayMillis
+                                }
+                            }
                         }
-                    }.awaitAll()
-                }
-
-                isSmartConnecting = false
-                val reachable = results.filter { it.second > 0L }.sortedBy { it.second }
-                if (reachable.isNotEmpty()) {
-                    val fastest = reachable.first().first
-                    onAction(MainAction.SelectServer(fastest.guid))
-                    if (!isConnected) {
-                        onAction(MainAction.ToggleService)
-                    } else {
-                        onAction(MainAction.RestartService)
+                        is RealPingEvent.Finish -> {
+                            isSmartConnecting = false
+                            val fastest = synchronized(results) {
+                                results.minByOrNull { it.value }
+                            }
+                            if (fastest != null) {
+                                MmkvManager.encodeServerTestDelayMillis(
+                                    fastest.key,
+                                    fastest.value
+                                )
+                                onAction(MainAction.SelectServer(fastest.key))
+                                if (!isConnected) {
+                                    isConnectingLocal = true
+                                    onAction(MainAction.ToggleService)
+                                } else {
+                                    onAction(MainAction.RestartService)
+                                }
+                            } else {
+                                context.toast(context.getString(R.string.no_server_available))
+                            }
+                        }
+                        else -> {}
                     }
-                } else {
-                    context.toast(context.getString(R.string.no_server_available))
                 }
+                worker.start()
             }
         }
     }
 
-    // Force RTL layout as requested
+    // Force RTL layout
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Rtl) {
         Column(
             modifier = modifier
@@ -233,7 +273,7 @@ fun MrVpnHomeScreen(
                 .padding(horizontal = 20.dp, vertical = 14.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            // 1. Header (Logo + MR VPN wordmark leading; Bell + Settings chips trailing)
+            // 1. Header (F7: Bell removed; Only MR Logo + MR VPN wordmark on leading, ONE Settings chip on trailing)
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -261,7 +301,7 @@ fun MrVpnHomeScreen(
                         )
                     }
                     Text(
-                        text = stringResource(R.string.app_name),
+                        text = "MR VPN",
                         fontSize = 19.sp,
                         fontWeight = FontWeight.Bold,
                         color = if (isDarkTheme) Color(0xFFF5F2EA) else Color(0xFF101013),
@@ -269,156 +309,251 @@ fun MrVpnHomeScreen(
                     )
                 }
 
-                // Trailing: Bell & Settings icon chips
-                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    // Bell chip with small gold dot badge (opens Telegram channel)
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(if (isDarkTheme) Color(0xFF101013) else Color(0xFFECECEF))
-                            .border(1.dp, Color(0xFF232329), CircleShape)
-                            .clickable {
-                                Utils.openUri(context, "https://t.me/MR_vpnStore")
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_bell_24dp),
-                            contentDescription = "Notifications",
-                            modifier = Modifier.size(19.dp),
-                            tint = if (isDarkTheme) Color(0xFFC9C9CE) else Color(0xFF333333)
-                        )
-                        // Gold dot badge at top-right
-                        Box(
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(top = 7.dp, end = 8.dp)
-                                .size(7.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFFD8B45A))
-                        )
-                    }
-
-                    // Settings chip
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(if (isDarkTheme) Color(0xFF101013) else Color(0xFFECECEF))
-                            .border(1.dp, Color(0xFF232329), CircleShape)
-                            .clickable { onOpenSettings() },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_sliders_24dp),
-                            contentDescription = "Settings",
-                            modifier = Modifier.size(19.dp),
-                            tint = if (isDarkTheme) Color(0xFFC9C9CE) else Color(0xFF333333)
-                        )
-                    }
+                // Trailing: ONE Settings icon chip (F7)
+                Box(
+                    modifier = Modifier
+                        .size(38.dp)
+                        .clip(CircleShape)
+                        .background(if (isDarkTheme) Color(0xFF101013) else Color(0xFFECECEF))
+                        .border(1.dp, Color(0xFF232329), CircleShape)
+                        .clickable { onOpenSettings() },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.ic_sliders_24dp),
+                        contentDescription = "Settings",
+                        modifier = Modifier.size(19.dp),
+                        tint = if (isDarkTheme) Color(0xFFC9C9CE) else Color(0xFF333333)
+                    )
                 }
             }
 
-            Spacer(modifier = Modifier.height(30.dp))
+            Spacer(modifier = Modifier.height(28.dp))
 
-            // 2. Connect Ring Button (216dp, 3dp gold border, inner hairline ring inset 10dp, shield-check icon)
+            // 2. Connect Ring Button with F8 Animations
+            val isConnecting = isConnectingLocal && !isConnected
+            val infiniteTransition = rememberInfiniteTransition(label = "connectAnim")
+
+            // Rotating arc for connecting state (F8: 1s per rev, ~23% circumference)
+            val arcRotation by infiniteTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = if (isConnecting && areAnimationsEnabled) 360f else 0f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 1000, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart
+                ),
+                label = "arcRotation"
+            )
+
+            // Blinking dot for connecting state
+            val connectingDotAlpha by infiniteTransition.animateFloat(
+                initialValue = 1f,
+                targetValue = if (isConnecting && areAnimationsEnabled) 0.2f else 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 600, easing = LinearEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "dotAlpha"
+            )
+
+            // Ripple 1 for connected state (F8: scale 1 -> 1.55, fade out, 2.8s cycle)
+            val ripple1Progress by infiniteTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = if (isConnected && areAnimationsEnabled) 1f else 0f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 2800, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart
+                ),
+                label = "ripple1"
+            )
+
+            // Ripple 2 (delayed 1.4s)
+            val ripple2Progress by infiniteTransition.animateFloat(
+                initialValue = 0f,
+                targetValue = if (isConnected && areAnimationsEnabled) 1f else 0f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 2800, delayMillis = 1400, easing = LinearEasing),
+                    repeatMode = RepeatMode.Restart
+                ),
+                label = "ripple2"
+            )
+
+            // Shield pop-in scale (0.9 -> 1.18 -> 1)
+            val shieldPopScale = remember { Animatable(if (isConnected) 1f else 0.9f) }
+            val shieldHeartbeat by infiniteTransition.animateFloat(
+                initialValue = 1f,
+                targetValue = if (isConnected && areAnimationsEnabled) 0.94f else 1f,
+                animationSpec = infiniteRepeatable(
+                    animation = tween(durationMillis = 800, easing = FastOutSlowInEasing),
+                    repeatMode = RepeatMode.Reverse
+                ),
+                label = "heartbeat"
+            )
+
+            LaunchedEffect(isConnected) {
+                if (isConnected && areAnimationsEnabled) {
+                    shieldPopScale.snapTo(0.9f)
+                    shieldPopScale.animateTo(1.18f, tween(350, easing = FastOutSlowInEasing))
+                    shieldPopScale.animateTo(1f, tween(350, easing = LinearOutSlowInEasing))
+                } else if (!isConnected && areAnimationsEnabled) {
+                    shieldPopScale.animateTo(0.9f, tween(300))
+                }
+            }
+
             Box(
                 modifier = Modifier
                     .size(240.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null
-                    ) { onAction(MainAction.ToggleService) },
+                    ) {
+                        if (!isConnected) {
+                            isConnectingLocal = true
+                        }
+                        onAction(MainAction.ToggleService)
+                    },
                 contentAlignment = Alignment.Center
             ) {
-                if (isConnected) {
-                    // Soft static halo
+                // Ripples while connected
+                if (isConnected && areAnimationsEnabled) {
+                    val r1Scale = 1f + (0.55f * ripple1Progress)
+                    val r1Alpha = (1f - ripple1Progress) * 0.35f
                     Box(
                         modifier = Modifier
-                            .size(256.dp)
-                            .background(
-                                brush = Brush.radialGradient(
-                                    colors = listOf(
-                                        Color(0x21D8B45A), // rgba(216,180,90,.13)
-                                        Color(0x00D8B45A)
-                                    )
-                                ),
-                                shape = CircleShape
-                            )
+                            .size(216.dp)
+                            .scale(r1Scale)
+                            .border(1.5.dp, Color(0xFFD8B45A).copy(alpha = r1Alpha), CircleShape)
+                    )
+
+                    val r2Scale = 1f + (0.55f * ripple2Progress)
+                    val r2Alpha = (1f - ripple2Progress) * 0.35f
+                    Box(
+                        modifier = Modifier
+                            .size(216.dp)
+                            .scale(r2Scale)
+                            .border(1.5.dp, Color(0xFFD8B45A).copy(alpha = r2Alpha), CircleShape)
                     )
                 }
 
-                // Outer Ring 216dp
-                Box(
+                // Connect Ring Canvas (216dp)
+                Canvas(
                     modifier = Modifier
                         .size(216.dp)
                         .clip(CircleShape)
                         .background(if (isDarkTheme) Color(0xFF0B0B0D) else Color(0xFFF0F0F3))
-                        .border(
-                            width = if (isConnected) 3.dp else 1.5.dp,
-                            color = if (isConnected) Color(0xFFD8B45A) else Color(0xFF232329),
-                            shape = CircleShape
-                        ),
-                    contentAlignment = Alignment.Center
                 ) {
-                    // Inner hairline ring inset 10dp
-                    Box(
-                        modifier = Modifier
-                            .size(196.dp)
-                            .border(
-                                width = 1.dp,
-                                color = Color(0xFF232329),
-                                shape = CircleShape
-                            )
+                    val strokeWidth = if (isConnected) 3.dp.toPx() else 1.5.dp.toPx()
+                    val ringColor = when {
+                        isConnected -> Color(0xFFD8B45A)
+                        isConnecting -> Color(0xFF2E2E33)
+                        else -> Color(0xFF2E2E33)
+                    }
+
+                    // Background ring
+                    drawCircle(
+                        color = ringColor,
+                        style = Stroke(width = strokeWidth)
                     )
 
-                    // Shield Check icon
-                    Icon(
-                        painter = painterResource(R.drawable.ic_shield_check_96dp),
-                        contentDescription = "Connect",
-                        modifier = Modifier.size(92.dp),
-                        tint = if (isConnected) Color(0xFFD8B45A) else Color(0xFF6E6E76)
+                    // Connecting rotating gold arc segment (~23% = 82.8 degrees)
+                    if (isConnecting) {
+                        drawArc(
+                            color = Color(0xFFD8B45A),
+                            startAngle = arcRotation,
+                            sweepAngle = 82.8f,
+                            useCenter = false,
+                            style = Stroke(width = 3.dp.toPx(), cap = StrokeCap.Round)
+                        )
+                    }
+
+                    // Inner hairline ring inset 10dp
+                    drawCircle(
+                        color = Color(0xFF232329),
+                        radius = size.minDimension / 2f - 10.dp.toPx(),
+                        style = Stroke(width = 1.dp.toPx())
                     )
                 }
+
+                // Shield icon with pop-in and heartbeat
+                val totalShieldScale = if (isConnected && areAnimationsEnabled) {
+                    shieldPopScale.value * shieldHeartbeat
+                } else if (isConnecting) {
+                    0.95f
+                } else {
+                    1f
+                }
+
+                Icon(
+                    painter = painterResource(R.drawable.ic_shield_check_96dp),
+                    contentDescription = "Connect",
+                    modifier = Modifier
+                        .size(92.dp)
+                        .scale(totalShieldScale),
+                    tint = if (isConnected) Color(0xFFD8B45A) else Color(0xFF6E6E76)
+                )
             }
 
             Spacer(modifier = Modifier.height(18.dp))
 
-            // 3. Status Block (Green dot + «متصل هستید» or Gray dot + «متصل نیستید»)
+            // 3. Status Block
             Row(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(7.dp)
             ) {
+                val dotColor = when {
+                    isConnected -> Color(0xFF30D158)
+                    isConnecting -> Color(0xFFD8B45A)
+                    else -> Color(0xFF6E6E76)
+                }
+                val dotAlpha = if (isConnecting) connectingDotAlpha else 1f
+
                 Box(
                     modifier = Modifier
                         .size(8.dp)
                         .clip(CircleShape)
-                        .background(if (isConnected) Color(0xFF30D158) else Color(0xFF6E6E76))
+                        .background(dotColor.copy(alpha = dotAlpha))
                 )
+                val statusText = when {
+                    isConnected -> "متصل هستید"
+                    isConnecting -> "در حال اتصال…"
+                    else -> "متصل نیستید"
+                }
+                val statusTextColor = when {
+                    isConnected -> Color(0xFF30D158)
+                    isConnecting -> Color(0xFFD8B45A)
+                    else -> Color(0xFF9A97A3)
+                }
                 Text(
-                    text = stringResource(if (isConnected) R.string.status_connected else R.string.status_disconnected),
+                    text = statusText,
                     fontSize = 16.sp,
                     fontWeight = FontWeight.SemiBold,
-                    color = if (isConnected) Color(0xFF30D158) else Color(0xFF9A97A3)
+                    color = statusTextColor
                 )
             }
 
-            // Duration Timer in Persian Digits
-            Text(
-                text = timerString,
-                fontSize = 40.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = if (isDarkTheme) Color(0xFFF5F2EA) else Color(0xFF101013),
-                letterSpacing = 1.sp,
-                modifier = Modifier.padding(top = 4.dp)
-            )
+            // Duration Timer in Persian Digits (F2: No letterSpacing; F8: Animated flip/fade per second)
+            AnimatedContent(
+                targetState = timerString,
+                transitionSpec = {
+                    (slideInVertically(animationSpec = tween(450)) { height -> height } + fadeIn(animationSpec = tween(450)))
+                        .togetherWith(slideOutVertically(animationSpec = tween(450)) { height -> -height } + fadeOut(animationSpec = tween(450)))
+                },
+                label = "timerAnimation"
+            ) { targetTimer ->
+                Text(
+                    text = targetTimer,
+                    fontSize = 40.sp,
+                    fontWeight = FontWeight.ExtraBold,
+                    color = if (isDarkTheme) Color(0xFFF5F2EA) else Color(0xFF101013),
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+            }
 
             // Server line: {server name} • پینگ {n}ms
             val delayVal = selectedServer?.testDelayMillis ?: 0L
-            val serverName = selectedServer?.profile?.remarks ?: stringResource(R.string.status_disconnected)
+            val serverName = selectedServer?.profile?.remarks ?: "متصل نیستید"
             val subText = if (delayVal > 0L) {
-                "$serverName • ${stringResource(R.string.ping_label)} ${toPersianDigits(delayVal.toString())}ms"
+                "$serverName • پینگ ${toPersianDigits(delayVal.toString())}ms"
             } else {
                 serverName
             }
@@ -433,6 +568,11 @@ fun MrVpnHomeScreen(
 
             // 4. Server Card (Radius 20dp, #101013, border 1px #232329)
             if (selectedServer != null) {
+                val flagEmoji = CountryFlagHelper.getFlagForServer(
+                    selectedServer.guid,
+                    selectedServer.profile.remarks
+                )
+
                 Surface(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -446,7 +586,7 @@ fun MrVpnHomeScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
-                        // Flag avatar circle
+                        // Flag avatar circle: emoji or neutral gold globe icon (F3)
                         Box(
                             modifier = Modifier
                                 .size(44.dp)
@@ -455,10 +595,19 @@ fun MrVpnHomeScreen(
                                 .border(1.dp, Color(0x29FFFFFF), CircleShape),
                             contentAlignment = Alignment.Center
                         ) {
-                            Text(
-                                text = FlagHelper.getFlag(selectedServer.profile.remarks),
-                                fontSize = 24.sp
-                            )
+                            if (flagEmoji != null) {
+                                Text(
+                                    text = flagEmoji,
+                                    fontSize = 22.sp
+                                )
+                            } else {
+                                Icon(
+                                    painter = painterResource(R.drawable.ic_globe_gold),
+                                    contentDescription = null,
+                                    tint = Color(0xFFD8B45A),
+                                    modifier = Modifier.size(24.dp)
+                                )
+                            }
                         }
 
                         // Server name
@@ -466,7 +615,7 @@ fun MrVpnHomeScreen(
                             text = selectedServer.profile.remarks,
                             style = MaterialTheme.typography.titleMedium.copy(
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 17.sp
+                                fontSize = 16.5.sp
                             ),
                             color = if (isDarkTheme) Color(0xFFF5F2EA) else Color(0xFF101013),
                             maxLines = 1,
@@ -474,7 +623,7 @@ fun MrVpnHomeScreen(
                             modifier = Modifier.weight(1f)
                         )
 
-                        // Signal bars
+                        // F9: Signal bars in champagne gold
                         SignalBars(delayMillis = delayVal)
 
                         // Chevron
@@ -500,14 +649,14 @@ fun MrVpnHomeScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Text(
-                            text = stringResource(R.string.add_subscription),
-                            fontSize = 17.sp,
+                            text = "افزودن اشتراک",
+                            fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFFD8B45A)
                         )
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.fillMaxWidth()
                         ) {
                             OutlinedButton(
                                 onClick = { onAction(MainAction.ImportClipboard) },
@@ -515,11 +664,7 @@ fun MrVpnHomeScreen(
                                 shape = RoundedCornerShape(12.dp),
                                 border = BorderStroke(1.dp, Color(0xFFD8B45A))
                             ) {
-                                Text(
-                                    text = stringResource(R.string.paste_link),
-                                    fontSize = 12.sp,
-                                    color = Color(0xFFD8B45A)
-                                )
+                                Text("جای‌گذاری لینک", color = Color(0xFFD8B45A), fontSize = 13.sp)
                             }
                             OutlinedButton(
                                 onClick = { onAction(MainAction.ImportQRcode) },
@@ -527,11 +672,7 @@ fun MrVpnHomeScreen(
                                 shape = RoundedCornerShape(12.dp),
                                 border = BorderStroke(1.dp, Color(0xFFD8B45A))
                             ) {
-                                Text(
-                                    text = stringResource(R.string.scan_qr),
-                                    fontSize = 12.sp,
-                                    color = Color(0xFFD8B45A)
-                                )
+                                Text("اسکن بارکد", color = Color(0xFFD8B45A), fontSize = 13.sp)
                             }
                         }
                     }
@@ -540,30 +681,31 @@ fun MrVpnHomeScreen(
 
             Spacer(modifier = Modifier.height(14.dp))
 
-            // 5. Smart Connect Button (Primary solid #D8B45A, dark text #1C1A14, radius 16dp)
+            // 5. Smart Connect Button (Real ping test across configs)
             Button(
                 onClick = onSmartConnectClick,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(50.dp),
+                    .height(52.dp),
                 shape = RoundedCornerShape(16.dp),
                 colors = ButtonDefaults.buttonColors(
                     containerColor = Color(0xFFD8B45A),
                     contentColor = Color(0xFF1C1A14)
                 ),
-                contentPadding = PaddingValues(13.dp)
+                contentPadding = PaddingValues(horizontal = 20.dp),
+                enabled = !isSmartConnecting
             ) {
                 if (isSmartConnecting) {
                     CircularProgressIndicator(
-                        modifier = Modifier.size(18.dp),
+                        modifier = Modifier.size(20.dp),
                         color = Color(0xFF1C1A14),
-                        strokeWidth = 2.dp
+                        strokeWidth = 2.5.dp
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
                     Text(
-                        text = "در حال انتخاب سریع‌ترین سرور...",
+                        text = "در حال یافتن بهترین سرور…",
                         fontSize = 15.sp,
-                        fontWeight = FontWeight.ExtraBold,
+                        fontWeight = FontWeight.Bold,
                         color = Color(0xFF1C1A14)
                     )
                 } else {
@@ -575,7 +717,7 @@ fun MrVpnHomeScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = stringResource(R.string.btn_smart_connect),
+                        text = "اتصال هوشمند",
                         fontSize = 16.sp,
                         fontWeight = FontWeight.ExtraBold,
                         color = Color(0xFF1C1A14)
@@ -583,7 +725,7 @@ fun MrVpnHomeScreen(
                 }
             }
 
-            // 6. Stats Row (Remaining Volume & Remaining Time with thin progress bars)
+            // 6. Stats Row (F4: Correct active subscription data with binary GiB units)
             if (usageInfo != null && (usageInfo.total > 0L || usageInfo.expire > 0L || usageInfo.used > 0L)) {
                 Spacer(modifier = Modifier.height(20.dp))
 
@@ -592,14 +734,18 @@ fun MrVpnHomeScreen(
                     (remainingBytes.toFloat() / usageInfo.total.toFloat()).coerceIn(0f, 1f)
                 } else 1f
 
+                // Binary GiB (1024^3) and MiB (1024^2) calculation
+                val oneGiB = 1024.0 * 1024.0 * 1024.0
+                val oneMiB = 1024.0 * 1024.0
+
                 val volumeText = if (usageInfo.total <= 0L) {
-                    stringResource(R.string.unlimited)
+                    "نامحدود"
                 } else if (remainingBytes >= 1_000_000_000L) {
-                    val gb = remainingBytes.toDouble() / 1_000_000_000.0
-                    toPersianDigits(String.format(Locale.US, "%.2f", gb)) + " " + stringResource(R.string.unit_gb)
+                    val gb = remainingBytes.toDouble() / oneGiB
+                    toPersianDigits(String.format(Locale.US, "%.1f", gb)) + " گیگابایت"
                 } else {
-                    val mb = remainingBytes / 1_000_000L
-                    toPersianDigits(mb.toString()) + " " + stringResource(R.string.unit_mb)
+                    val mb = (remainingBytes.toDouble() / oneMiB).toLong()
+                    toPersianDigits(mb.toString()) + " مگابایت"
                 }
 
                 val nowSec = System.currentTimeMillis() / 1000L
@@ -608,9 +754,9 @@ fun MrVpnHomeScreen(
                 } else -1L
 
                 val timeText = if (daysLeft >= 0L) {
-                    "${toPersianDigits(daysLeft.toString())} ${stringResource(R.string.days_suffix)}"
+                    "${toPersianDigits(daysLeft.toString())} روز"
                 } else {
-                    stringResource(R.string.unlimited)
+                    "نامحدود"
                 }
                 val timeFraction = if (daysLeft >= 0L) {
                     (daysLeft.toFloat() / 30f).coerceIn(0f, 1f)
@@ -629,12 +775,12 @@ fun MrVpnHomeScreen(
                     ) {
                         Text(
                             text = volumeText,
-                            fontSize = 24.sp,
+                            fontSize = 22.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = if (isDarkTheme) Color(0xFFF5F2EA) else Color(0xFF101013)
                         )
                         Text(
-                            text = stringResource(R.string.remaining_volume),
+                            text = "حجم باقیمانده",
                             fontSize = 13.sp,
                             color = Color(0xFF9A97A3),
                             modifier = Modifier.padding(top = 2.dp)
@@ -674,12 +820,12 @@ fun MrVpnHomeScreen(
                     ) {
                         Text(
                             text = timeText,
-                            fontSize = 24.sp,
+                            fontSize = 22.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = if (isDarkTheme) Color(0xFFF5F2EA) else Color(0xFF101013)
                         )
                         Text(
-                            text = stringResource(R.string.remaining_time),
+                            text = "زمان باقیمانده",
                             fontSize = 13.sp,
                             color = Color(0xFF9A97A3),
                             modifier = Modifier.padding(top = 2.dp)
@@ -709,14 +855,9 @@ fun MrVpnHomeScreen(
     }
 }
 
+// F9: Champagne gold signal bars everywhere
 @Composable
 fun SignalBars(delayMillis: Long, modifier: Modifier = Modifier) {
-    val barColor = when {
-        delayMillis in 1..200 -> Color(0xFF30D158) // Green
-        delayMillis in 201..350 -> Color(0xFFD8B45A) // Gold
-        delayMillis > 350 -> Color(0xFFBA1A1A) // Red
-        else -> Color(0xFFD8B45A)
-    }
     val activeBars = when {
         delayMillis in 1..100 -> 4
         delayMillis in 101..200 -> 3
@@ -724,20 +865,23 @@ fun SignalBars(delayMillis: Long, modifier: Modifier = Modifier) {
         delayMillis > 350 -> 1
         else -> 0
     }
-    val heights = listOf(6.dp, 10.dp, 14.dp, 18.dp)
+    val heights = listOf(7.dp, 11.dp, 15.dp, 19.dp)
     Row(
         modifier = modifier,
         horizontalArrangement = Arrangement.spacedBy(3.dp),
         verticalAlignment = Alignment.Bottom
     ) {
         heights.forEachIndexed { index, h ->
-            val isActive = (index < activeBars) || (delayMillis == 0L && index < 2)
+            val isActive = (index < activeBars)
             Box(
                 modifier = Modifier
                     .width(4.dp)
                     .height(h)
                     .clip(RoundedCornerShape(2.dp))
-                    .background(if (isActive) barColor else barColor.copy(alpha = 0.28f))
+                    .background(
+                        if (isActive) Color(0xFFD8B45A)
+                        else Color(0xFFD8B45A).copy(alpha = 0.22f)
+                    )
             )
         }
     }
@@ -758,7 +902,7 @@ fun MrVpnBottomBar(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(top = 10.dp, bottom = 12.dp),
+                .padding(top = 8.dp, bottom = 12.dp),
             horizontalArrangement = Arrangement.SpaceAround,
             verticalAlignment = Alignment.CenterVertically
         ) {
@@ -776,22 +920,22 @@ fun MrVpnBottomBar(
                 ) {
                     Box(
                         modifier = Modifier
-                            .clip(RoundedCornerShape(12.dp))
+                            .clip(RoundedCornerShape(14.dp))
                             .background(if (isSelected) Color(0x21D8B45A) else Color.Transparent)
-                            .padding(horizontal = 14.dp, vertical = 4.dp),
+                            .padding(horizontal = 18.dp, vertical = 5.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
                             painter = painterResource(tab.iconRes),
                             contentDescription = stringResource(tab.labelRes),
-                            modifier = Modifier.size(21.dp),
+                            modifier = Modifier.size(20.dp),
                             tint = if (isSelected) Color(0xFFD8B45A) else Color(0xFF8B8894)
                         )
                     }
                     Text(
                         text = stringResource(tab.labelRes),
                         fontSize = 11.5.sp,
-                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                        fontWeight = if (isSelected) FontWeight.Medium else FontWeight.Normal,
                         color = if (isSelected) Color(0xFFD8B45A) else Color(0xFF8B8894)
                     )
                 }

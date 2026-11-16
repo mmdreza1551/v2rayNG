@@ -8,7 +8,16 @@ import android.view.KeyEvent
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.Scaffold
+import androidx.compose.material3.ScaffoldDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
 import com.v2ray.ang.AngApplication
 import com.v2ray.ang.AppConfig
@@ -28,6 +37,10 @@ import com.v2ray.ang.handler.SubscriptionInfoParser
 import com.v2ray.ang.ui.AboutActivity
 import com.v2ray.ang.ui.backup.BackupActivity
 import com.v2ray.ang.ui.base.HelperBaseComponentActivity
+import com.v2ray.ang.ui.home.MainTab
+import com.v2ray.ang.ui.home.MrVpnBottomBar
+import com.v2ray.ang.ui.home.MrVpnHomeScreen
+import com.v2ray.ang.ui.home.MrVpnUsageScreen
 import com.v2ray.ang.ui.checkupdate.CheckUpdateActivity
 import com.v2ray.ang.ui.logcat.LogcatActivity
 import com.v2ray.ang.ui.perappproxy.PerAppProxyActivity
@@ -100,29 +113,100 @@ class MainActivity : HelperBaseComponentActivity() {
 
     @Composable
     override fun ScreenContent() {
-        BackHandler { moveTaskToBack(false) }
-        MainScreen(
-            mainViewModel = mainViewModel,
-            onAction = { action ->
-                when (action) {
-                    MainAction.ToggleService -> handleFabAction()
-                    MainAction.TestCurrentServer -> handleLayoutTestClick()
-                    MainAction.ImportQRcode -> importQRcode()
-                    MainAction.ImportClipboard -> importClipboard()
-                    MainAction.ImportConfigLocal -> importConfigLocal()
-                    is MainAction.ImportManually -> importManually(action.type)
-                    MainAction.RestartService -> LauncherManager.restartServiceOrStart(this, ::requestServiceStart)
-                    MainAction.LocateSelectedServer -> mainViewModel.triggerLocateSelectedServer()
-                    is MainAction.SelectServer -> setSelectServer(action.guid)
-                    is MainAction.EditServer -> editServer(action.guid, action.profile)
-                    is MainAction.ShareClipboard -> shareToClipboard(action.guid)
-                    is MainAction.ShareFullContent -> shareFullContentAsync(action.guid)
-                    is MainAction.OpenSubscriptionLink -> openSubscriptionLink(action.url)
-                    else -> mainViewModel.onAction(action)
+        var currentTab by rememberSaveable { mutableStateOf(MainTab.Home) }
+
+        BackHandler {
+            if (currentTab != MainTab.Home) {
+                currentTab = MainTab.Home
+            } else {
+                moveTaskToBack(false)
+            }
+        }
+
+        val onActionHandler: (MainAction) -> Unit = { action ->
+            when (action) {
+                MainAction.ToggleService -> handleFabAction()
+                MainAction.TestCurrentServer -> handleLayoutTestClick()
+                MainAction.ImportQRcode -> importQRcode()
+                MainAction.ImportClipboard -> importClipboard()
+                MainAction.ImportConfigLocal -> importConfigLocal()
+                is MainAction.ImportManually -> importManually(action.type)
+                MainAction.RestartService -> LauncherManager.restartServiceOrStart(this, ::requestServiceStart)
+                MainAction.LocateSelectedServer -> mainViewModel.triggerLocateSelectedServer()
+                is MainAction.SelectServer -> setSelectServer(action.guid)
+                is MainAction.EditServer -> editServer(action.guid, action.profile)
+                is MainAction.ShareClipboard -> shareToClipboard(action.guid)
+                is MainAction.ShareFullContent -> shareFullContentAsync(action.guid)
+                is MainAction.OpenSubscriptionLink -> openSubscriptionLink(action.url)
+                else -> mainViewModel.onAction(action)
+            }
+        }
+
+        val onTabSelected: (MainTab) -> Unit = { tab ->
+            when (tab) {
+                MainTab.Home -> currentTab = MainTab.Home
+                MainTab.Servers -> currentTab = MainTab.Servers
+                MainTab.Usage -> currentTab = MainTab.Usage
+                MainTab.Settings -> navigateTo(MainDestination.Settings)
+            }
+        }
+
+        when (currentTab) {
+            MainTab.Home -> {
+                Scaffold(
+                    contentWindowInsets = ScaffoldDefaults.contentWindowInsets,
+                    bottomBar = {
+                        MrVpnBottomBar(
+                            currentTab = currentTab,
+                            onTabSelected = onTabSelected
+                        )
+                    }
+                ) { innerPadding ->
+                    MrVpnHomeScreen(
+                        mainViewModel = mainViewModel,
+                        onAction = onActionHandler,
+                        onNavigate = { route -> navigateTo(route) },
+                        onOpenServers = { currentTab = MainTab.Servers },
+                        onOpenSettings = { navigateTo(MainDestination.Settings) },
+                        modifier = Modifier.padding(innerPadding)
+                    )
                 }
-            },
-            onNavigate = { route -> navigateTo(route) },
-        )
+            }
+            MainTab.Servers -> {
+                MainScreen(
+                    mainViewModel = mainViewModel,
+                    onAction = onActionHandler,
+                    onNavigate = { route -> navigateTo(route) },
+                    bottomBar = {
+                        MrVpnBottomBar(
+                            currentTab = currentTab,
+                            onTabSelected = onTabSelected
+                        )
+                    }
+                )
+            }
+            MainTab.Usage -> {
+                Scaffold(
+                    contentWindowInsets = ScaffoldDefaults.contentWindowInsets,
+                    bottomBar = {
+                        MrVpnBottomBar(
+                            currentTab = currentTab,
+                            onTabSelected = onTabSelected
+                        )
+                    }
+                ) { innerPadding ->
+                    MrVpnUsageScreen(
+                        modifier = Modifier.padding(innerPadding)
+                    )
+                }
+            }
+            MainTab.Settings -> {
+                LaunchedEffect(Unit) {
+                    navigateTo(MainDestination.Settings)
+                    currentTab = MainTab.Home
+                }
+            }
+        }
     }
 
     private fun shareToClipboard(guid: String): Boolean =

@@ -1,6 +1,25 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="title_support">پشتیبانی</string>
+    <string name="tab_home">خانه</string>
+    <string name="tab_servers">سرورها</string>
+    <string name="tab_usage">مصرف</string>
+    <string name="tab_settings">تنظیمات</string>
+    <string name="status_connected">متصل هستید</string>
+    <string name="status_disconnected">متصل نیستید</string>
+    <string name="btn_smart_connect">اتصال هوشمند</string>
+    <string name="ping_label">پینگ</string>
+    <string name="remaining_volume">حجم باقیمانده</string>
+    <string name="remaining_time">زمان باقیمانده</string>
+    <string name="unlimited">نامحدود</string>
+    <string name="days_suffix">روز</string>
+    <string name="unit_gb">گیگ</string>
+    <string name="unit_mb">مگ</string>
+    <string name="no_server_available">سروری در دسترس نیست</string>
+    <string name="add_subscription">افزودن اشتراک</string>
+    <string name="paste_link">جای‌گذاری از کلیپ‌بورد</string>
+    <string name="scan_qr">اسکن بارکد QR</string>
+    <string name="coming_soon">به‌زودی</string>
     <string name="app_name" translatable="false">MR VPN</string>
     <string name="app_widget_name">تعویض</string>
     <string name="app_tile_name">تعویض</string>
